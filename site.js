@@ -128,79 +128,18 @@ var FIVERR_URL = "";
   buildFilters();
   render();
 
-  /* --- hero viewport: rotating wireframe icosphere --- */
-  var cv = document.getElementById("vp");
-  if (!cv || !cv.getContext) return;
-  var ctx = cv.getContext("2d");
-  var t0 = (1 + Math.sqrt(5)) / 2;
-  var V = [[-1,t0,0],[1,t0,0],[-1,-t0,0],[1,-t0,0],[0,-1,t0],[0,1,t0],[0,-1,-t0],[0,1,-t0],[t0,0,-1],[t0,0,1],[-t0,0,-1],[-t0,0,1]];
-  var F = [[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
-  // subdivide once -> 42 verts, 80 faces (matches the stats overlay)
-  var cache = {};
-  function norm(v) { var l = Math.hypot(v[0], v[1], v[2]); return [v[0]/l, v[1]/l, v[2]/l]; }
-  V = V.map(norm);
-  function mid(a, b) {
-    var k = a < b ? a + "_" + b : b + "_" + a;
-    if (cache[k] === undefined) { var p = V[a], q = V[b]; V.push(norm([(p[0]+q[0])/2, (p[1]+q[1])/2, (p[2]+q[2])/2])); cache[k] = V.length - 1; }
-    return cache[k];
-  }
-  var F2 = [];
-  F.forEach(function (f) { var a = mid(f[0], f[1]), b = mid(f[1], f[2]), c = mid(f[2], f[0]); F2.push([f[0],a,c],[f[1],b,a],[f[2],c,b],[a,b,c]); });
-  var E = {}; F2.forEach(function (f) { for (var i = 0; i < 3; i++) { var a = f[i], b = f[(i+1)%3]; E[a < b ? a+"_"+b : b+"_"+a] = [a, b]; } });
-  E = Object.keys(E).map(function (k) { return E[k]; });
-
+  /* --- hero terminal: replay the example run line by line --- */
+  var term = document.getElementById("term");
   var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  var W = 0, H = 0, dpr = 1;
-  function size() { dpr = Math.min(window.devicePixelRatio || 1, 2); W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; }
-  size(); window.addEventListener("resize", size);
-  function css(n) { return getComputedStyle(root).getPropertyValue(n).trim(); }
-
-  var pitch = -0.42;
-  function project(p, yaw, sc, cx, cy) {
-    var x = p[0], y = p[1], z = p[2];
-    var cyw = Math.cos(yaw), syw = Math.sin(yaw);
-    var x1 = x * cyw - z * syw, z1 = x * syw + z * cyw;
-    var cp = Math.cos(pitch), sp = Math.sin(pitch);
-    var y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
-    var f = 4 / (4 + z2);
-    return [cx + x1 * sc * f, cy - y2 * sc * f, z2];
-  }
-  function frame(ts) {
-    var yaw = reduce ? 0.6 : ts / 4200;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    var cx = W / 2, cy = H / 2 + 10, sc = Math.min(W, H) * 0.27;
-    // floor grid
-    ctx.lineWidth = 1; ctx.strokeStyle = css("--vp-grid");
-    for (var g = -6; g <= 6; g++) {
-      var a = project([g * 0.5, -1.25, -3], yaw, sc, cx, cy), b = project([g * 0.5, -1.25, 3], yaw, sc, cx, cy);
-      var c = project([-3, -1.25, g * 0.5], yaw, sc, cx, cy), d = project([3, -1.25, g * 0.5], yaw, sc, cx, cy);
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(c[0], c[1]); ctx.lineTo(d[0], d[1]); ctx.stroke();
+  if (term && !reduce) {
+    var lines = term.innerHTML.split("\n");
+    var n = 0;
+    function step() {
+      n++;
+      term.innerHTML = lines.slice(0, n).join("\n") + (n < lines.length ? '\n<span class="cur"></span>' : "");
+      if (n < lines.length) setTimeout(step, n === 1 ? 900 : 380);
+      else setTimeout(function () { n = 0; step(); }, 7000);
     }
-    // axis lines on floor
-    var ax = [["--x", [-3, -1.25, 0], [3, -1.25, 0]], ["--y", [0, -1.25, -3], [0, -1.25, 3]]];
-    ax.forEach(function (l) { var p = project(l[1], yaw, sc, cx, cy), q = project(l[2], yaw, sc, cx, cy); ctx.strokeStyle = css(l[0]); ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); ctx.globalAlpha = 1; });
-    // mesh
-    var P = V.map(function (v) { return project(v, yaw, sc, cx, cy); });
-    var wire = css("--vp-wire"), acc = css("--accent");
-    E.forEach(function (e) {
-      var p = P[e[0]], q = P[e[1]], back = (p[2] + q[2]) / 2 > 0;
-      ctx.strokeStyle = acc; ctx.globalAlpha = back ? 0.22 : 0.95; ctx.lineWidth = back ? 1 : 1.4;
-      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
-    });
-    ctx.globalAlpha = 1; ctx.fillStyle = wire;
-    P.forEach(function (p) { if (p[2] <= 0) { ctx.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); } });
-    // origin + gizmo
-    ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(cx, cy + 0, 3, 0, 7); ctx.fill();
-    var gx = W - 46, gy = H - 46, gs = 26;
-    [["--x", [1, 0, 0], "X"], ["--y", [0, 0, -1], "Y"], ["--z", [0, 1, 0], "Z"]].forEach(function (a) {
-      var p = project(a[1], yaw, gs, gx, gy);
-      ctx.strokeStyle = css(a[0]); ctx.fillStyle = css(a[0]); ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(p[0], p[1]); ctx.stroke();
-      ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, 7); ctx.fill();
-      ctx.fillStyle = "#111"; ctx.font = "600 9px " + css("--mono"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(a[2], p[0], p[1] + 0.5);
-    });
-    if (!reduce) requestAnimationFrame(frame);
+    step();
   }
-  requestAnimationFrame(frame);
 })();
